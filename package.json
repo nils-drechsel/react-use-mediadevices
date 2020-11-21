@@ -1,0 +1,27 @@
+{
+  "name": "react-use-mediadevices",
+  "version": "1.0.0",
+  "description": "",
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nils-drechsel/react-use-mediadevices.git"
+  },
+  "author": "Nils J. D. Drechsel",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/nils-drechsel/react-use-mediadevices/issues"
+  },
+  "homepage": "https://github.com/nils-drechsel/react-use-mediadevices#readme",
+  "devDependencies": {
+    "@types/react": "^16.9.34",
+    "typescript": "^3.8.3"
+  },
+  "dependencies": {
+    "use-deep-compare-effect": "^1.4.0"
+  }
+}
