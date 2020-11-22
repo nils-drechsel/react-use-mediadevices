@@ -124,15 +124,15 @@ export class MediaDevicesManager {
             audio: {deviceId: audioId ? {exact: audioId} : undefined},
             video: {deviceId: videoId ? {exact: videoId} : undefined}
         };
-        this.loadStream(id, videoId, audioId, outputId, onload, constraints, navigator.mediaDevices.getUserMedia);
+        this.loadStream(id, videoId, audioId, outputId, onload, constraints, false);
     }
 
     loadScreenStream(id: string, outputId: string, onload: (stream: MediaStream | undefined) => void) {
         const mediaDevices = navigator.mediaDevices as any;
-        this.loadStream(id, null, null, outputId, onload, undefined, mediaDevices.getDisplayMedia);
+        this.loadStream(id, null, null, outputId, onload, undefined, true);
     }    
 
-    private loadStream(id: string, videoId: string | null, audioId: string | null, outputId: string, onload: (stream: MediaStream | undefined) => void, constraints: MediaStreamConstraints | undefined, streamFunction: (constraints: MediaStreamConstraints | undefined) => Promise<MediaStream>) {
+    private loadStream(id: string, videoId: string | null, audioId: string | null, outputId: string, onload: (stream: MediaStream | undefined) => void, constraints: MediaStreamConstraints | undefined, screenshare: boolean) {
         
         const streamIdent = videoId + "-" + audioId + "-" + outputId;
 
@@ -153,8 +153,9 @@ export class MediaDevicesManager {
             this.registerMediaStream(id, undefined, streamIdent, StreamState.FETCHING, [onload]);
         }
 
+        const promise: Promise<MediaStream> = screenshare ? (navigator.mediaDevices as any).getDisplayMedia() : navigator.mediaDevices.getUserMedia(constraints);
 
-        streamFunction(constraints).then((stream: MediaStream) => {
+        promise.then((stream: MediaStream) => {
             const videoStream: VideoStream = this.mediaStreams.get(id)!;
             if (videoStream.streamIdent !== streamIdent) return;
             this.registerMediaStream(id, stream, streamIdent, StreamState.READY);
