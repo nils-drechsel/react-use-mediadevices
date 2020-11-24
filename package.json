@@ -1,6 +1,6 @@
 {
   "name": "react-use-mediadevices",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "",
   "main": "lib/index.js",
   "scripts": {
@@ -22,6 +22,7 @@
     "typescript": "^3.8.3"
   },
   "dependencies": {
+    "react-use-listeners": "^1.0.0",
     "use-deep-compare-effect": "^1.4.0"
   }
 }
