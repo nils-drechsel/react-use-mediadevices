@@ -1,7 +1,9 @@
 import { FunctionComponent } from 'react';
 interface Props {
     className?: string;
-    name: string;
+    deviceId: string;
+    bundleId?: string;
+    streamId?: string;
 }
 export declare const VideoElement: FunctionComponent<Props>;
 export {};

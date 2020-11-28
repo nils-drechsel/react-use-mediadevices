@@ -1,13 +1,15 @@
 import React, { FunctionComponent, useRef, MutableRefObject, useEffect } from 'react';
-import { useMediaDevicesManager } from './useMediaDevices';
+import { useMediaDevicesManager } from './useMediaDevicesManager';
 
 interface Props {
     className?: string;
-    name: string;
+    deviceId: string;
+    bundleId?: string;
+    streamId?: string;
 }
 
 
-export const VideoElement: FunctionComponent<Props> = ({ name, className}) => {
+export const VideoElement: FunctionComponent<Props> = ({ deviceId, bundleId, streamId, className}) => {
 
     const ref = useRef() as MutableRefObject<HTMLVideoElement>;
 
@@ -15,10 +17,10 @@ export const VideoElement: FunctionComponent<Props> = ({ name, className}) => {
 
     useEffect(() => {
 
-        manager.registerVideoOutput(name, ref);
+        manager.registerVideoOutput(deviceId, ref, bundleId, streamId);
 
         return () => {
-            manager.deregisterVideoOutput(name);
+            manager.deregisterVideoOutput(deviceId);
         }
 
     }, [])

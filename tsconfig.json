@@ -1,14 +1,21 @@
 {
     "compilerOptions": {
         "target": "es6",
-        "module": "commonjs",
-        "declaration": true,
-        "outDir": "./lib",
-        "strict": true,
-        "jsx": "react",
+        "skipLibCheck": true,
         "esModuleInterop": true,
-        "noImplicitAny": true,
-        "noImplicitReturns": true,
+        "allowSyntheticDefaultImports": true,
+        "strict": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "jsx": "react",
+        "sourceMap": true,
+        "declaration": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "experimentalDecorators": true,
+        "noFallthroughCasesInSwitch": true,
+        "noEmit": true,
+        "module": "commonjs"
     },
     "include": [
         "src"

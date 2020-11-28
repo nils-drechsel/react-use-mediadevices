@@ -1,4 +1,4 @@
-import React, { FunctionComponent, useRef, useContext, useEffect } from "react";
+import React, { FunctionComponent, useRef, useEffect } from "react";
 import MediaDevicesContext from "./MediaDevicesContext";
 import { MediaDevicesManager } from "./MediaDevicesManager";
 

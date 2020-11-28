@@ -1,51 +1,79 @@
-import { Dispatch, MutableRefObject } from "react";
+import { MutableRefObject } from "react";
 import { Listeners } from "react-use-listeners";
+import { UnsubscribeCallback } from "react-use-listeners/lib/lib/Listeners";
 
-export enum SpecialMediaStream {
-    LOCAL_CAMERA,
-    LOCAL_SCREEN
-
-} 
+export enum MediaIdent {
+    LOCAL = 'LOCAL',
+    CAMERA = 'CAMERA',
+    SCREEN = 'SCREEN',
+}
 
 export type MediaDevice = {
     label: string;
     info: MediaDeviceInfo;
 }
 
-export type VideoStreamBundle = {
+export enum MediaType {
+    STREAM,
+    DATA
+}
+
+export enum StreamSubType {
+    LOCAL_CAMERA,
+    LOCAL_SCREEN,
+    REMOTE
+}
+
+export interface MediaObject {
+    type: MediaType;
+    id: string;
+    bundleId: string;
+    objId: string;
+}
+
+export interface MediaStreamObject extends MediaObject {
+    subType: StreamSubType;
+    stream: MediaStream;
+}
+
+export interface MediaBundle {
     bundleId: string,
-    streams: Map<string, MediaStream>;
-    onloadListeners: Listeners<(bundle: VideoStreamBundle) => void>;
+    objs: Map<string, MediaObject>;
+    onAddedListeners: Listeners<(bundleId: string, objId: string, obj: MediaObject) => void>;
+    onRemovedListeners: Listeners<(bundleId: string, objId: string) => void>;
 }
 
 
-export interface MediaStreamProvider {
-    addMediaStream(bundleId: string, streamId: string, stream: MediaStream): void;
-    removeMediaStream(bundleId: string, streamId: string): void;
+export interface MediaObjectProvider {
+    addMediaStream(bundleId: string, objId: string, stream: MediaStream): void;
+    removeMediaStream(bundleId: string, objId: string): void;
     removeMediaStreams(bundleId: string): void;
 }
 
-export class MediaDevicesManager implements MediaStreamProvider {
+export class MediaDevicesManager implements MediaObjectProvider {
 
     videoDevices: Map<string, MediaDevice> = new Map();
     audioInputDevices: Map<string, MediaDevice> = new Map();
     audioOutputDevices: Map<string, MediaDevice> = new Map();
     videoOutputs: Map<string, MutableRefObject<HTMLVideoElement>> = new Map();
 
-    bundles: Map<string, VideoStreamBundle> = new Map();
-
-    localBundles: Set<string> = new Set();
+    bundles: Map<string, MediaBundle> = new Map();
 
     videoStreamConnections: Map<string, string> = new Map();
     audioConnections: Map<string, string> = new Map();
     
 
     constructor() {
+        this.initBundleIfNecessary(MediaIdent.LOCAL);
         this.refreshDevices();
+        navigator.mediaDevices.ondevicechange = (_event: Event) => this.refreshDevices();
     }
 
-    registerVideoOutput(id: string, ref: MutableRefObject<HTMLVideoElement>) {
+    registerVideoOutput(id: string, ref: MutableRefObject<HTMLVideoElement>, bundleId?: string, objId?: string) {
         this.videoOutputs.set(id, ref);
+        if (bundleId && objId) {
+            this.connectStreamToOutput(bundleId, objId, id);
+        }
     }
 
     deregisterVideoOutput(id: string) {
@@ -55,37 +83,75 @@ export class MediaDevicesManager implements MediaStreamProvider {
 
     private initBundleIfNecessary(bundleId: string) {
         if (!this.bundles.has(bundleId)) {
-            this.bundles.set(bundleId, {bundleId, streams: new Map(), onloadListeners: new Listeners()});
+            this.bundles.set(bundleId, {bundleId, objs: new Map(), onAddedListeners: new Listeners(), onRemovedListeners: new Listeners()});
         }
     }
 
-    addMediaStream(bundleId: string, streamId: string, stream: MediaStream) {
+    private makeMediaId(bundleId: string, streamId: string) {
+        return bundleId + '/' + streamId;
+    }
+
+    addMediaStream(bundleId: string, objId: string, stream: MediaStream) {
+        this.addMediaStreamObject(bundleId, objId, { id: this.makeMediaId(bundleId, objId), bundleId, objId, type: MediaType.STREAM, subType: StreamSubType.REMOTE, stream });
+    }
+
+    addLocalCameraStream(bundleId: string, objId: string, stream: MediaStream) {
+        this.addMediaStreamObject(bundleId, objId, { id: this.makeMediaId(bundleId, objId), bundleId, objId, type: MediaType.STREAM, subType: StreamSubType.LOCAL_CAMERA, stream });
+    }
+
+    addLocalScreenStream(bundleId: string, objId: string, stream: MediaStream) {
+        this.addMediaStreamObject(bundleId, objId, { id: this.makeMediaId(bundleId, objId), bundleId, objId, type: MediaType.STREAM, subType: StreamSubType.LOCAL_SCREEN, stream });
+    }
+
+    private addMediaStreamObject(bundleId: string, objId: string, mediaObject: MediaStreamObject) {
         this.initBundleIfNecessary(bundleId);
         const bundle = this.bundles.get(bundleId)!;
 
-        bundle.streams.set(streamId, stream);
-        this.notifyOnLoad(bundleId);
+        bundle.objs.set(objId, mediaObject);
+        const stream = mediaObject.stream;
+        
+        stream.onremovetrack = ((_e : MediaStreamTrackEvent) => this.trackRemoved(bundleId, objId));
+        bundle.onAddedListeners.getCallbacks().forEach(listener => listener(bundleId, objId, mediaObject));
     }
 
-    removeMediaStream(bundleId: string, streamId: string) {
+    private trackRemoved(bundleId: string, objId: string) {
         if (!this.bundles.has(bundleId)) return;
         const bundle = this.bundles.get(bundleId)!;
-        bundle.streams.delete(streamId);
+        if (!bundle.objs.has(objId)) return;
+        const mediaObject = bundle.objs.get(objId)!;
+        if (mediaObject.type !== MediaType.STREAM) throw new Error("media object " + bundleId + " " + objId + " is not a stream");
+        const stream = (mediaObject as MediaStreamObject).stream;
+        if (stream.getTracks().length == 0) this.removeMediaStream(bundleId, objId);
+        
+}
+
+    removeMediaStream(bundleId: string, objId: string) {
+        if (!this.bundles.has(bundleId)) return;
+        const bundle = this.bundles.get(bundleId)!;
+        bundle.objs.delete(objId);
+        bundle.onRemovedListeners.getCallbacks().forEach(listener => listener(bundleId, objId));
     }
 
     destroyBundle(bundleId: string) {
         this.stopBundle(bundleId);
+        const bundle = this.bundles.get(bundleId)!;
+        bundle.objs.forEach((_obj, objId) => {
+            bundle.onRemovedListeners.getCallbacks().forEach(listener => listener(bundleId, objId));
+        });
         this.bundles.delete(bundleId);
-        this.localBundles.delete(bundleId);
     }
 
     stopBundle(bundleId: string) {
         if (!this.bundles.has(bundleId)) return;
         const bundle = this.bundles.get(bundleId)!;
-        bundle.streams.forEach(stream => {
+        bundle.objs.forEach(mediaObject => {
+
+            if (mediaObject.type !== MediaType.STREAM) return;
+            const stream = (mediaObject as MediaStreamObject).stream;
+
             stream.getTracks().forEach(track => track.stop());
         });
-        bundle.streams.clear();
+        bundle.objs.clear();
     }
 
     // stopOutput(outputId: string) {
@@ -93,19 +159,23 @@ export class MediaDevicesManager implements MediaStreamProvider {
     //         const output: MutableRefObject<HTMLVideoElement> = this.videoOutputs.get(outputId)!;
 
     //     if (this.videoStreamConnections.has(outputId)) {
-    //         const oldStreamId = this.videoStreamConnections.get(outputId)!;
-    //         this.stopStream(oldStreamId);
+    //         const oldobjId = this.videoStreamConnections.get(outputId)!;
+    //         this.stopStream(oldobjId);
     //     }
     // }
 
-    connectStreamToOutput(bundleId: string, streamId: string, outputId: string) {
+    connectStreamToOutput(bundleId: string, objId: string, outputId: string) {
         if (!this.bundles.has(bundleId)) throw new Error("bundle with id: " + bundleId + " is not available");
         if (!this.videoOutputs.has(outputId)) throw new Error("output with id: " + outputId + " is not available");
 
-        const bundle: VideoStreamBundle = this.bundles.get(bundleId)!; 
+        const bundle: MediaBundle = this.bundles.get(bundleId)!; 
 
-        if (!bundle.streams.has(streamId)) throw new Error("stream with id: " + streamId + " is not available");
-        const stream: MediaStream = bundle.streams.get(streamId)!;
+        if (!bundle.objs.has(objId)) throw new Error("stream with id: " + objId + " is not available");
+
+        const mediaObject = bundle.objs.get(objId)!;
+
+        if (mediaObject.type !== MediaType.STREAM) throw new Error("media object " + bundleId + " " + objId + " is not a stream");
+        const stream = (mediaObject as MediaStreamObject).stream;        
 
         const output: MutableRefObject<HTMLVideoElement> = this.videoOutputs.get(outputId)!;
 
@@ -129,30 +199,35 @@ export class MediaDevicesManager implements MediaStreamProvider {
 
     }
     
-    private notifyOnLoad(bundleId: string) {
-        if (!this.bundles.has(bundleId)) throw new Error("bundle with id: " + bundleId + " is not available");
-        const bundle: VideoStreamBundle = this.bundles.get(bundleId)!;
-        bundle.onloadListeners.getCallbacks().forEach(listener => listener(bundle));
-    }
 
 
-    listenToBundle(bundleId: string, callback: (bundle: VideoStreamBundle) => void): () => void {
+    listenToBundle(bundleId: string, onAddedListener: (bundleId: string, objId: string, mediaObject: MediaObject) => void,
+        onRemovedListener: (bundleId: string, objId: string) => void): UnsubscribeCallback {
+        
         this.initBundleIfNecessary(bundleId);
-        const bundle: VideoStreamBundle = this.bundles.get(bundleId)!; 
-        return bundle.onloadListeners.addListener(callback);
+        const bundle: MediaBundle = this.bundles.get(bundleId)!;
+        // immediately transmit all streams we already have
+        bundle.objs.forEach((mediaObject, objId) => onAddedListener(bundleId, objId, mediaObject));
+        const unsubscribeAdded = bundle.onAddedListeners.addListener(onAddedListener);
+        const unsubscribeRemoved = bundle.onRemovedListeners.addListener(onRemovedListener);
+
+        return () => {
+            unsubscribeAdded();
+            unsubscribeRemoved();
+        }
+
     }
 
-    loadCameraStream(bundleId: string, streamId: string, videoId: string, audioId: string, outputId: string, onload: (bundle: VideoStreamBundle) => void) {
+    loadCameraStream(videoId: string, audioId: string) {
         const constraints = {
             audio: {deviceId: audioId ? {exact: audioId} : undefined},
             video: {deviceId: videoId ? {exact: videoId} : undefined}
         };
-        this.loadStream(bundleId, streamId, videoId, audioId, outputId, onload, constraints, false);
+        this.loadStream(MediaIdent.LOCAL, MediaIdent.CAMERA, false, constraints);
     }
 
-    loadScreenStream(bundleId: string, streamId: string, outputId: string, onload: (bundle: VideoStreamBundle) => void) {
-        const mediaDevices = navigator.mediaDevices as any;
-        this.loadStream(bundleId, streamId, null, null, outputId, onload, undefined, true);
+    loadScreenStream() {
+        this.loadStream(MediaIdent.LOCAL, MediaIdent.SCREEN, true, undefined);
     }    
 
     private async getVideoFeed(constraints?: MediaStreamConstraints): Promise<MediaStream> {
@@ -164,25 +239,22 @@ export class MediaDevicesManager implements MediaStreamProvider {
     }
 
 
-    private async loadStream(bundleId: string, streamId: string, videoId: string | null, audioId: string | null, outputId: string, onload: (bundle: VideoStreamBundle) => void, constraints: MediaStreamConstraints | undefined, screenshare: boolean) {
+    private async loadStream(bundleId: string, objId: string, screenshare: boolean, constraints?: MediaStreamConstraints | undefined) {
         if (this.bundles.has(bundleId)) this.stopBundle(bundleId);
         this.initBundleIfNecessary(bundleId);
 
-        const bundle: VideoStreamBundle = this.bundles.get(bundleId)!;        
-
-        this.listenToBundle(bundleId, onload);
-        
-        let stream: MediaStream = screenshare ? await this.getScreenFeed() : await this.getVideoFeed();
-        this.addMediaStream(bundleId, streamId, stream);
-        this.localBundles.add(bundleId);
-        this.connectStreamToOutput(bundleId, streamId, outputId);
-        this.notifyOnLoad(bundleId);
-
+        if (screenshare) {
+            const stream: MediaStream = await this.getScreenFeed();
+            this.addLocalScreenStream(bundleId, objId, stream);
+        } else {
+            const stream: MediaStream = await this.getVideoFeed(constraints);
+            this.addLocalCameraStream(bundleId, objId, stream);
+        }
     }
 
 
-    getLocalBundles(): Array<VideoStreamBundle> {
-        return Array.from(this.localBundles.values()).filter(bundleId => this.bundles.has(bundleId)).map(bundleId => this.bundles.get(bundleId)!);
+    getLocalBundle(): MediaBundle {
+        return this.bundles.get(MediaIdent.LOCAL)!;
     }
 
 
@@ -232,11 +304,6 @@ export class MediaDevicesManager implements MediaStreamProvider {
     removeMediaStreams(bundleId: string): void {
         this.destroyBundle(bundleId);
     }
-
-
-
-
-
 
 
 
