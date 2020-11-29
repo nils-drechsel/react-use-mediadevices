@@ -1,6 +1,6 @@
 import { MutableRefObject } from "react";
 import { Listeners } from "react-use-listeners";
-import { UnsubscribeCallback } from "react-use-listeners/lib/lib/Listeners";
+import { UnsubscribeCallback } from "react-use-listeners";
 
 export enum MediaIdent {
     LOCAL = 'LOCAL',
@@ -50,6 +50,11 @@ export interface MediaObjectProvider {
     removeMediaStreams(bundleId: string): void;
 }
 
+
+export const makeMediaId = (bundleId: string, streamId: string): string => {
+        return bundleId + '/' + streamId;
+}
+
 export class MediaDevicesManager implements MediaObjectProvider {
 
     videoDevices: Map<string, MediaDevice> = new Map();
@@ -87,20 +92,16 @@ export class MediaDevicesManager implements MediaObjectProvider {
         }
     }
 
-    private makeMediaId(bundleId: string, streamId: string) {
-        return bundleId + '/' + streamId;
-    }
-
     addMediaStream(bundleId: string, objId: string, stream: MediaStream) {
-        this.addMediaStreamObject(bundleId, objId, { id: this.makeMediaId(bundleId, objId), bundleId, objId, type: MediaType.STREAM, subType: StreamSubType.REMOTE, stream });
+        this.addMediaStreamObject(bundleId, objId, { id: makeMediaId(bundleId, objId), bundleId, objId, type: MediaType.STREAM, subType: StreamSubType.REMOTE, stream });
     }
 
     addLocalCameraStream(bundleId: string, objId: string, stream: MediaStream) {
-        this.addMediaStreamObject(bundleId, objId, { id: this.makeMediaId(bundleId, objId), bundleId, objId, type: MediaType.STREAM, subType: StreamSubType.LOCAL_CAMERA, stream });
+        this.addMediaStreamObject(bundleId, objId, { id: makeMediaId(bundleId, objId), bundleId, objId, type: MediaType.STREAM, subType: StreamSubType.LOCAL_CAMERA, stream });
     }
 
     addLocalScreenStream(bundleId: string, objId: string, stream: MediaStream) {
-        this.addMediaStreamObject(bundleId, objId, { id: this.makeMediaId(bundleId, objId), bundleId, objId, type: MediaType.STREAM, subType: StreamSubType.LOCAL_SCREEN, stream });
+        this.addMediaStreamObject(bundleId, objId, { id: makeMediaId(bundleId, objId), bundleId, objId, type: MediaType.STREAM, subType: StreamSubType.LOCAL_SCREEN, stream });
     }
 
     private addMediaStreamObject(bundleId: string, objId: string, mediaObject: MediaStreamObject) {
