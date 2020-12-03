@@ -1,5 +1,5 @@
 import { MutableRefObject } from "react";
-import { Listeners } from "react-use-listeners";
+import { DataListeners, Listeners } from "react-use-listeners";
 import { UnsubscribeCallback } from "react-use-listeners";
 export declare enum MediaIdent {
     LOCAL = "LOCAL",
@@ -24,58 +24,67 @@ export interface MediaObject {
     id: string;
     bundleId: string;
     objId: string;
+    videoOutput: string | null;
 }
 export interface MediaStreamObject extends MediaObject {
     subType: StreamSubType;
     stream: MediaStream;
+    trackIds: Set<string>;
 }
 export interface MediaBundle {
     bundleId: string;
     objs: Map<string, MediaObject>;
     onAddedListeners: Listeners<(bundleId: string, objId: string, obj: MediaObject) => void>;
-    onRemovedListeners: Listeners<(bundleId: string, objId: string) => void>;
+    onChangedListeners: Listeners<(bundleId: string, objId: string, obj: MediaObject) => void>;
+    onRemovedListeners: Listeners<(bundleId: string, objId: string, obj: MediaObject) => void>;
 }
 export interface MediaObjectProvider {
-    addMediaStream(bundleId: string, objId: string, stream: MediaStream): void;
-    removeMediaStream(bundleId: string, objId: string): void;
-    removeMediaStreams(bundleId: string): void;
+    addMediaStream(bundleId: string, objId: string, stream: MediaStream, trackId: string): void;
+    removeMediaObject(bundleId: string, objId: string): void;
 }
 export declare const makeMediaId: (bundleId: string, streamId: string) => string;
+export interface Devices {
+    video: Map<string, MediaDevice>;
+    audioInput: Map<string, MediaDevice>;
+    audioOutput: Map<string, MediaDevice>;
+}
 export declare class MediaDevicesManager implements MediaObjectProvider {
-    videoDevices: Map<string, MediaDevice>;
-    audioInputDevices: Map<string, MediaDevice>;
-    audioOutputDevices: Map<string, MediaDevice>;
+    devices: Devices | null;
     videoOutputs: Map<string, MutableRefObject<HTMLVideoElement>>;
     bundles: Map<string, MediaBundle>;
     videoStreamConnections: Map<string, string>;
     audioConnections: Map<string, string>;
-    constructor();
+    deviceListeners: DataListeners<Devices>;
+    logging: boolean;
+    constructor(logging?: boolean);
     registerVideoOutput(id: string, ref: MutableRefObject<HTMLVideoElement>, bundleId?: string, objId?: string): void;
     deregisterVideoOutput(id: string): void;
     private initBundleIfNecessary;
-    addMediaStream(bundleId: string, objId: string, stream: MediaStream): void;
+    addMediaStream(bundleId: string, objId: string, stream: MediaStream, trackId: string): void;
     addLocalCameraStream(bundleId: string, objId: string, stream: MediaStream): void;
     addLocalScreenStream(bundleId: string, objId: string, stream: MediaStream): void;
     private addMediaStreamObject;
-    private trackRemoved;
-    removeMediaStream(bundleId: string, objId: string): void;
+    private notifyBundleOnAdd;
+    private notifyBundleOnChange;
+    private notifyBundleOnRemove;
+    removeMediaObject(bundleId: string, objId: string): void;
+    stopStream(bundleId: string, objId: string): void;
     destroyBundle(bundleId: string): void;
-    stopBundle(bundleId: string): void;
     connectStreamToOutput(bundleId: string, objId: string, outputId: string): void;
     connectAudioOutputToVideoOutput(audioId: string, outputId: string): void;
-    listenToBundle(bundleId: string, onAddedListener: (bundleId: string, objId: string, mediaObject: MediaObject) => void, onRemovedListener: (bundleId: string, objId: string) => void): UnsubscribeCallback;
-    loadCameraStream(videoId: string, audioId: string): void;
-    loadScreenStream(): void;
+    listenToBundle(bundleId: string, onAddedListener: (bundleId: string, objId: string, mediaObject: MediaObject) => void, onChangedListener: (bundleId: string, objId: string, mediaObject: MediaObject) => void, onRemovedListener: (bundleId: string, objId: string, mediaObject: MediaObject) => void): UnsubscribeCallback;
+    loadCameraStream(videoId: string | null, audioId: string | null, outputDeviceId?: string): void;
+    loadScreenStream(outputDeviceId?: string): void;
     private getVideoFeed;
     private getScreenFeed;
     private loadStream;
-    getLocalBundle(): MediaBundle;
+    getMediaObject(bundleId: string, objId: string): MediaObject | null;
     private createDeviceLabel;
-    refreshDevices(): void;
+    listenForDevices(listener: (devices: Devices) => void): UnsubscribeCallback;
+    notifyDeviceListeners(): void;
+    refreshDevices(): Promise<void>;
     releaseDevices(): void;
-    getVideoDevices(): Map<string, MediaDevice>;
-    getAudioInputDevices(): Map<string, MediaDevice>;
-    getAudioOutputDevices(): Map<string, MediaDevice>;
     getMediaConstraints(): MediaTrackSupportedConstraints;
     removeMediaStreams(bundleId: string): void;
+    getVideoOutputs(): Map<string, MutableRefObject<HTMLVideoElement>>;
 }

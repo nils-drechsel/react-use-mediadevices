@@ -3,15 +3,16 @@ import MediaDevicesContext from "./MediaDevicesContext";
 import { MediaDevicesManager } from "./MediaDevicesManager";
 
 type Props = {
+    logging?: boolean
 }
 
 
-export const MediaDevicesProvider: FunctionComponent<Props> = ({ children }) => {
+export const MediaDevicesProvider: FunctionComponent<Props> = ({ children, logging }) => {
 
     const managerRef = useRef<MediaDevicesManager>();
 
     if (!managerRef.current) {
-        managerRef.current = new MediaDevicesManager();
+        managerRef.current = new MediaDevicesManager(logging);
     }
 
     useEffect(() => {
