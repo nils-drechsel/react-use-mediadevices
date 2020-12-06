@@ -36,6 +36,8 @@ export interface MediaStreamObject extends MediaObject {
     subType: StreamSubType;
     stream: MediaStream;
     trackIds: Set<string>;
+    width: number | null;
+    height: number | null;
 }
 
 export interface MediaBundle {
@@ -127,26 +129,63 @@ export class MediaDevicesManager implements MediaObjectProvider {
         this.addMediaStreamObject(bundleId, objId, makeMediaId(bundleId, objId), MediaType.STREAM, StreamSubType.LOCAL_SCREEN, stream, null, trackIds);
     }
 
+    updateStreamDimensions(bundleId: string, objId: string, width: number, height: number) {
+        if (!this.bundles.has(bundleId)) return;
+        const bundle = this.bundles.get(bundleId)!;
+        if (!bundle.objs.has(objId)) return;
+        const obj = bundle.objs.get(objId)!;
+        if (!(obj.type === MediaType.STREAM)) return;
+        const mediaStreamObject = obj as MediaStreamObject;
+        mediaStreamObject.width = width;
+        mediaStreamObject.height = height;
+
+        this.notifyBundleOnChange(bundleId, objId, mediaStreamObject);
+    }
+
+    private getStreamDimensions(stream: MediaStream): [number | null, number | null] {
+        const videoTracks = stream.getVideoTracks();
+
+        const width = videoTracks.length > 0 ? videoTracks[0].getSettings().width || null: null;
+        const height = videoTracks.length > 0 ? videoTracks[0].getSettings().height || null : null;
+        
+        return [width, height];
+    }
+
     private addMediaStreamObject(bundleId: string, objId: string, id: string, type: MediaType, subType: StreamSubType, stream: MediaStream, videoOutput: string | null, trackIds: Set<string>) {
         this.initBundleIfNecessary(bundleId);
         const bundle = this.bundles.get(bundleId)!;
 
         if (bundle.objs.has(objId)) {
+
+            const [width, height] = this.getStreamDimensions(stream);
+
+            const streamObject = (bundle.objs.get(objId) as MediaStreamObject);
+            if (width) streamObject.width = width;
+            if (height) streamObject.height = height;
+
             if (trackIds.size > 0) {
-                const streamTrackIds = (bundle.objs.get(objId) as MediaStreamObject).trackIds;
+                const streamTrackIds = streamObject.trackIds;
                 trackIds.forEach(trackId => streamTrackIds.add(trackId));
             }
             return;
         }
 
+        const [width, height] = this.getStreamDimensions(stream);
+
+
         const mediaObject: MediaStreamObject = {
-            id, bundleId, objId, type, subType, stream, videoOutput, trackIds
+            id, bundleId, objId, type, subType, stream, videoOutput, trackIds, width, height
         }
 
         bundle.objs.set(objId, mediaObject);
 
         stream.onaddtrack = ((_e: MediaStreamTrackEvent) => {
             if (this.logging) console.log('track was added', bundleId, objId, stream);
+            const [newWidth, newHeight] = this.getStreamDimensions(stream);
+            if (newWidth && newHeight) {
+                mediaObject.width = newWidth;
+                mediaObject.height = newHeight;
+            }
             this.notifyBundleOnChange(bundleId, objId, mediaObject);
         });
         
@@ -154,6 +193,13 @@ export class MediaDevicesManager implements MediaObjectProvider {
             if (this.logging) console.log('track was removed', bundleId, objId, stream);
 
             if (stream.getTracks().length == 0) this.removeMediaObject(bundleId, objId);
+
+            const [newWidth, newHeight] = this.getStreamDimensions(stream);
+            if (newWidth && newHeight) {
+                mediaObject.width = newWidth;
+                mediaObject.height = newHeight;
+            }
+
             this.notifyBundleOnChange(bundleId, objId, mediaObject);
             
         });
@@ -334,9 +380,16 @@ export class MediaDevicesManager implements MediaObjectProvider {
         return bundle.objs.get(objId)!;
     }
 
+    getMediaBundle(bundleId: string): MediaBundle | null {
+        if (!this.bundles.has(bundleId)) return null;
+        const bundle = this.bundles.get(bundleId)!;
+        return bundle;
+    }
+
+
 
     private createDeviceLabel(map: Map<string, MediaDevice>, info: MediaDeviceInfo): string {
-        if (info.label) return info.label;
+        if (info.label) return info.label.replace(/ *\([^)]*\) */g, "");
         if (info.kind === "videoinput") return "Camera " + (map.size + 1);
         if (info.kind === "audioinput") return "Microphone " + (map.size + 1);
         if (info.kind === "audiooutput") return "Speaker " + (map.size + 1);
@@ -358,9 +411,6 @@ export class MediaDevicesManager implements MediaObjectProvider {
         if (this.logging) console.log("refreshing devices");
 
         const devices = await navigator.mediaDevices.enumerateDevices();
-
-        console.log("received devices", devices);
-
 
         const videoDevices: Map<string, MediaDevice> = new Map();
         const audioInputDevices: Map<string, MediaDevice> = new Map();

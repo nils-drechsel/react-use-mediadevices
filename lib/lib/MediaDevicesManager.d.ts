@@ -30,6 +30,8 @@ export interface MediaStreamObject extends MediaObject {
     subType: StreamSubType;
     stream: MediaStream;
     trackIds: Set<string>;
+    width: number | null;
+    height: number | null;
 }
 export interface MediaBundle {
     bundleId: string;
@@ -63,6 +65,8 @@ export declare class MediaDevicesManager implements MediaObjectProvider {
     addMediaStream(bundleId: string, objId: string, stream: MediaStream, trackId: string): void;
     addLocalCameraStream(bundleId: string, objId: string, stream: MediaStream): void;
     addLocalScreenStream(bundleId: string, objId: string, stream: MediaStream): void;
+    updateStreamDimensions(bundleId: string, objId: string, width: number, height: number): void;
+    private getStreamDimensions;
     private addMediaStreamObject;
     private notifyBundleOnAdd;
     private notifyBundleOnChange;
@@ -79,6 +83,7 @@ export declare class MediaDevicesManager implements MediaObjectProvider {
     private getScreenFeed;
     private loadStream;
     getMediaObject(bundleId: string, objId: string): MediaObject | null;
+    getMediaBundle(bundleId: string): MediaBundle | null;
     private createDeviceLabel;
     listenForDevices(listener: (devices: Devices) => void): UnsubscribeCallback;
     notifyDeviceListeners(): void;
