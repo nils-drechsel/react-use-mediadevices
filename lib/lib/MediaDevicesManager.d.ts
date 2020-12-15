@@ -25,6 +25,7 @@ export interface MediaObject {
     bundleId: string;
     objId: string;
     videoOutput: string | null;
+    label: string | null;
 }
 export interface MediaStreamObject extends MediaObject {
     subType: StreamSubType;
@@ -33,9 +34,14 @@ export interface MediaStreamObject extends MediaObject {
     width: number | null;
     height: number | null;
 }
+interface UnresolvedLabel {
+    trackIds: Array<string>;
+    label: string;
+}
 export interface MediaBundle {
     bundleId: string;
     objs: Map<string, MediaObject>;
+    unresolvedLabels: Array<UnresolvedLabel>;
     onAddedListeners: Listeners<(bundleId: string, objId: string, obj: MediaObject) => void>;
     onChangedListeners: Listeners<(bundleId: string, objId: string, obj: MediaObject) => void>;
     onRemovedListeners: Listeners<(bundleId: string, objId: string, obj: MediaObject) => void>;
@@ -43,6 +49,7 @@ export interface MediaBundle {
 export interface MediaObjectProvider {
     addMediaStream(bundleId: string, objId: string, stream: MediaStream, trackId: string): void;
     removeMediaObject(bundleId: string, objId: string): void;
+    setTrackLabels(bundleId: string, trackIds: Array<string>, label: string): void;
 }
 export declare const makeMediaId: (bundleId: string, streamId: string) => string;
 export interface Devices {
@@ -62,6 +69,8 @@ export declare class MediaDevicesManager implements MediaObjectProvider {
     registerVideoOutput(id: string, ref: MutableRefObject<HTMLVideoElement>, bundleId?: string, objId?: string): void;
     deregisterVideoOutput(id: string): void;
     private initBundleIfNecessary;
+    setTrackLabels(bundleId: string, trackIds: Array<string>, label: string): void;
+    resolveUnresolvedLabels(bundleId: string, notify: boolean): void;
     addMediaStream(bundleId: string, objId: string, stream: MediaStream, trackId: string): void;
     addLocalCameraStream(bundleId: string, objId: string, stream: MediaStream): void;
     addLocalScreenStream(bundleId: string, objId: string, stream: MediaStream): void;
@@ -74,7 +83,7 @@ export declare class MediaDevicesManager implements MediaObjectProvider {
     removeMediaObject(bundleId: string, objId: string): void;
     stopStream(bundleId: string, objId: string): void;
     destroyBundle(bundleId: string): void;
-    connectStreamToOutput(bundleId: string, objId: string, outputId: string): void;
+    connectStreamToOutput(bundleId: string, objId: string, outputId: string): Promise<void>;
     connectAudioOutputToVideoOutput(audioId: string, outputId: string): void;
     listenToBundle(bundleId: string, onAddedListener: (bundleId: string, objId: string, mediaObject: MediaObject) => void, onChangedListener: (bundleId: string, objId: string, mediaObject: MediaObject) => void, onRemovedListener: (bundleId: string, objId: string, mediaObject: MediaObject) => void): UnsubscribeCallback;
     loadCameraStream(videoId: string | null, audioId: string | null, outputDeviceId?: string): void;
@@ -93,3 +102,4 @@ export declare class MediaDevicesManager implements MediaObjectProvider {
     removeMediaStreams(bundleId: string): void;
     getVideoOutputs(): Map<string, MutableRefObject<HTMLVideoElement>>;
 }
+export {};

@@ -6,6 +6,8 @@ interface Props {
     streamId: string;
     width?: number | null;
     height?: number | null;
+    fullscreen?: boolean;
+    muted?: boolean;
 }
 export declare const VideoElement: FunctionComponent<Props>;
 export {};

@@ -29,7 +29,8 @@ export interface MediaObject {
     id: string;
     bundleId: string;
     objId: string;
-    videoOutput: string | null;
+    videoOutput: string | null;
+    label: string | null;
 }
 
 export interface MediaStreamObject extends MediaObject {
@@ -40,9 +41,15 @@ export interface MediaStreamObject extends MediaObject {
     height: number | null;
 }
 
+interface UnresolvedLabel {
+    trackIds: Array<string>,
+    label: string,
+}
+
 export interface MediaBundle {
     bundleId: string,
     objs: Map<string, MediaObject>;
+    unresolvedLabels: Array<UnresolvedLabel>;
     onAddedListeners: Listeners<(bundleId: string, objId: string, obj: MediaObject) => void>;
     onChangedListeners: Listeners<(bundleId: string, objId: string, obj: MediaObject) => void>;
     onRemovedListeners: Listeners<(bundleId: string, objId: string, obj: MediaObject) => void>;
@@ -52,6 +59,7 @@ export interface MediaBundle {
 export interface MediaObjectProvider {
     addMediaStream(bundleId: string, objId: string, stream: MediaStream, trackId: string): void;
     removeMediaObject(bundleId: string, objId: string): void;
+    setTrackLabels(bundleId:string, trackIds: Array<string>, label: string): void;
 }
 
 
@@ -103,28 +111,76 @@ export class MediaDevicesManager implements MediaObjectProvider {
 
     private initBundleIfNecessary(bundleId: string) {
         if (!this.bundles.has(bundleId)) {
-            this.bundles.set(bundleId, {bundleId, objs: new Map(), onAddedListeners: new Listeners(), onChangedListeners: new Listeners(), onRemovedListeners: new Listeners()});
+            this.bundles.set(bundleId, {bundleId, objs: new Map(), unresolvedLabels: [], onAddedListeners: new Listeners(), onChangedListeners: new Listeners(), onRemovedListeners: new Listeners()});
         }
+    }
+
+    setTrackLabels(bundleId: string, trackIds: Array<string>, label: string) {
+        if (this.logging) console.log("setting track labels", bundleId, trackIds, label)
+        this.initBundleIfNecessary(bundleId);
+        const bundle = this.bundles.get(bundleId)!;
+        bundle.unresolvedLabels.push({ trackIds, label });
+        this.resolveUnresolvedLabels(bundleId, true);
+    }
+
+    resolveUnresolvedLabels(bundleId: string, notify: boolean) {
+        if (!this.bundles.has(bundleId)) return;
+        const bundle = this.bundles.get(bundleId)!;
+
+        const stillUnresolvedLables: Array<UnresolvedLabel> = [];
+
+        let someLabelsWereResoved = false;
+
+        bundle.unresolvedLabels.forEach((unresolvedLabel: UnresolvedLabel) => {
+            const trackIds = unresolvedLabel.trackIds;
+            const label = unresolvedLabel.label;
+            let resolved = false;
+            if (this.logging) console.log("trying to resolve label", trackIds, label);
+            bundle.objs.forEach((obj: MediaObject) => {
+                if (obj.type === MediaType.STREAM) {
+                    const mediaStreamObject = obj as MediaStreamObject;
+                    if (this.logging) console.log("checking obj", obj);
+                    if (trackIds.some(trackId => mediaStreamObject.trackIds.has(trackId))) {
+                        if (this.logging) console.log("successfully resolved label", bundleId, obj.id, label);
+                        obj.label = label;
+                        resolved = true;
+                        someLabelsWereResoved = true;
+                        if (notify) this.notifyBundleOnChange(bundleId, obj.id, obj);
+                    }
+                }
+            });
+            if (!resolved) stillUnresolvedLables.push(unresolvedLabel);
+        });
+
+        if (someLabelsWereResoved) {
+            bundle.unresolvedLabels = stillUnresolvedLables;
+        }
+
     }
 
     addMediaStream(bundleId: string, objId: string, stream: MediaStream, trackId: string) {
         if (this.logging) console.log('adding media stream', bundleId, objId, stream, trackId);
 
-        this.addMediaStreamObject(bundleId, objId, makeMediaId(bundleId, objId), MediaType.STREAM, StreamSubType.REMOTE, stream, null, new Set(trackId));
+        const trackIds: Set<string> = new Set();
+        trackIds.add(trackId);
+
+        this.addMediaStreamObject(bundleId, objId, makeMediaId(bundleId, objId), MediaType.STREAM, StreamSubType.REMOTE, stream, null, trackIds);
     }
 
     addLocalCameraStream(bundleId: string, objId: string, stream: MediaStream) {
-        if (this.logging) console.log('adding local camera stream', bundleId, objId, stream);
 
         const trackIds = new Set(stream.getTracks().map(track => track.id));
+
+        if (this.logging) console.log('adding local camera stream', bundleId, objId, stream, trackIds);
+
 
         this.addMediaStreamObject(bundleId, objId, makeMediaId(bundleId, objId), MediaType.STREAM, StreamSubType.LOCAL_CAMERA, stream, null, trackIds);
     }
 
     addLocalScreenStream(bundleId: string, objId: string, stream: MediaStream) {
-        if (this.logging) console.log('adding local screen stream', bundleId, objId, stream);
-
         const trackIds = new Set(stream.getTracks().map(track => track.id));
+
+        if (this.logging) console.log('adding local screen stream', bundleId, objId, stream, trackIds);
 
         this.addMediaStreamObject(bundleId, objId, makeMediaId(bundleId, objId), MediaType.STREAM, StreamSubType.LOCAL_SCREEN, stream, null, trackIds);
     }
@@ -151,7 +207,7 @@ export class MediaDevicesManager implements MediaObjectProvider {
         return [width, height];
     }
 
-    private addMediaStreamObject(bundleId: string, objId: string, id: string, type: MediaType, subType: StreamSubType, stream: MediaStream, videoOutput: string | null, trackIds: Set<string>) {
+    private addMediaStreamObject(bundleId: string, objId: string, id: string, type: MediaType, subType: StreamSubType, stream: MediaStream, videoOutput: string | null, trackIds: Set<string>) {
         this.initBundleIfNecessary(bundleId);
         const bundle = this.bundles.get(bundleId)!;
 
@@ -172,12 +228,19 @@ export class MediaDevicesManager implements MediaObjectProvider {
 
         const [width, height] = this.getStreamDimensions(stream);
 
-
         const mediaObject: MediaStreamObject = {
-            id, bundleId, objId, type, subType, stream, videoOutput, trackIds, width, height
+            id, bundleId, objId, type, subType, stream, videoOutput, trackIds, width, height, label: null
         }
 
         bundle.objs.set(objId, mediaObject);
+
+        // remove stream when one of the tracks has ended
+        stream.getTracks().forEach(track => {
+            track.onended = () => {
+                if (this.logging) console.log("track has ended", bundleId, objId)
+                this.removeMediaObject(bundleId, objId);
+            }
+        });
 
         stream.onaddtrack = ((_e: MediaStreamTrackEvent) => {
             if (this.logging) console.log('track was added', bundleId, objId, stream);
@@ -186,6 +249,8 @@ export class MediaDevicesManager implements MediaObjectProvider {
                 mediaObject.width = newWidth;
                 mediaObject.height = newHeight;
             }
+
+            this.resolveUnresolvedLabels(bundleId, false /*notify*/);
             this.notifyBundleOnChange(bundleId, objId, mediaObject);
         });
         
@@ -203,8 +268,10 @@ export class MediaDevicesManager implements MediaObjectProvider {
             this.notifyBundleOnChange(bundleId, objId, mediaObject);
             
         });
+        this.resolveUnresolvedLabels(bundleId, false /*notify*/);
         this.notifyBundleOnAdd(bundleId, objId, mediaObject);
     }
+
 
     private notifyBundleOnAdd(bundleId: string, objId: string, mediaObject: MediaObject) {
         if (!this.bundles.has(bundleId)) return;
@@ -261,7 +328,7 @@ export class MediaDevicesManager implements MediaObjectProvider {
         this.bundles.delete(bundleId);
     }    
 
-    connectStreamToOutput(bundleId: string, objId: string, outputId: string) {
+    async connectStreamToOutput(bundleId: string, objId: string, outputId: string) {
         if (this.logging) console.log('connecting stream to output', bundleId, objId, outputId);
 
         if (!this.bundles.has(bundleId)) throw new Error("bundle with id: " + bundleId + " is not available");
@@ -283,7 +350,6 @@ export class MediaDevicesManager implements MediaObjectProvider {
         //this.stopOutput(outputId);
 
         output.current.srcObject = stream;
-        output.current.play();
     }
 
     connectAudioOutputToVideoOutput(audioId: string, outputId: string) {
@@ -329,6 +395,7 @@ export class MediaDevicesManager implements MediaObjectProvider {
         const constraints = {video: true, audio: true};
         if (videoId) Object.assign(constraints, { video: { deviceId: { exact: videoId } } });
         if (audioId) Object.assign(constraints, { audio: { deviceId: { exact: audioId } } });
+
         
         this.loadStream(MediaIdent.LOCAL, MediaIdent.CAMERA, false, constraints, outputDeviceId);
     }
@@ -342,7 +409,7 @@ export class MediaDevicesManager implements MediaObjectProvider {
     }
 
     private async getScreenFeed(): Promise<MediaStream> {
-        return (navigator.mediaDevices as any).mediaDevices.getDisplayMedia();
+        return (navigator.mediaDevices as any).getDisplayMedia();
     }
 
 

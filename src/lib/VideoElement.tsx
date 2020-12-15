@@ -7,11 +7,13 @@ interface Props {
     bundleId: string;
     streamId: string;
     width?: number | null;
-    height?: number | null;
+    height?: number | null;
+    fullscreen?: boolean;
+    muted?: boolean;
 }
 
 
-export const VideoElement: FunctionComponent<Props> = ({ deviceId, bundleId, streamId, cssClassName, width, height}) => {
+export const VideoElement: FunctionComponent<Props> = ({ deviceId, bundleId, streamId, cssClassName, width, height, fullscreen, muted}) => {
 
     const ref = useRef() as MutableRefObject<HTMLVideoElement>;
 
@@ -21,20 +23,31 @@ export const VideoElement: FunctionComponent<Props> = ({ deviceId, bundleId, str
 
         manager.registerVideoOutput(deviceId, ref, bundleId, streamId);
 
-        ref.current.onloadedmetadata = () => {
-            manager.updateStreamDimensions(bundleId, streamId, ref.current.videoWidth, ref.current.videoHeight);
-        };
+        if (ref.current) {
+            ref.current.onloadedmetadata = () => {
+                if (ref.current) manager.updateStreamDimensions(bundleId, streamId, ref.current.videoWidth, ref.current.videoHeight);
+            };
+
+            ref.current.onloadeddata = () => {
+                if (ref.current) manager.updateStreamDimensions(bundleId, streamId, ref.current.videoWidth, ref.current.videoHeight);
+            };            
+        }
 
 
         return () => {
             manager.deregisterVideoOutput(deviceId);
         }
 
-    }, [bundleId, streamId])
+    }, [ref.current, bundleId, streamId])
 
-    const pxWidth = width ? width + 'px' : undefined;
-    const pxHeight = height ? height + 'px' : undefined;
+    let pxWidth = width ? width + 'px' : undefined;
+    let pxHeight = height ? height + 'px' : undefined;
 
-    return <video width={pxWidth} height={pxHeight} className={cssClassName} ref={ref} muted autoPlay />;    
+    if (fullscreen) {
+        pxWidth = "100%";
+        pxHeight = "100%";
+    }
+
+    return <video width={pxWidth} height={pxHeight} className={cssClassName} ref={ref} muted={muted} autoPlay />;    
 
 }
