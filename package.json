@@ -1,6 +1,6 @@
 {
   "name": "react-use-mediadevices",
-  "version": "1.1.63",
+  "version": "1.2.0",
   "description": "",
   "main": "lib/index.js",
   "scripts": {
